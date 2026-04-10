@@ -89,104 +89,148 @@ class TranslateView extends ConsumerWidget {
         ],
       ),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Status and Error Display
-            if (state.isInitializing)
-              const LinearProgressIndicator(color: Colors.cyanAccent),
-            if (state.error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Text(
-                  state.error!,
-                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-              ),
+        child: OrientationBuilder(
+          builder: (context, orientation) {
+            final isLandscape = orientation == Orientation.landscape;
             
-            // Top Window: Original Text
-            Expanded(
-              child: Stack(
+            if (isLandscape) {
+              return Column(
                 children: [
-                  ScrollingTextWindow(
-                    text: state.historyInputText.isEmpty 
-                          ? state.inputText 
-                          : (state.inputText.isEmpty ? state.historyInputText : "${state.historyInputText}\n\n${state.inputText}").trim(),
-                    title: "Original",
-                    baseColor: Colors.blueAccent,
-                  ),
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: IconButton(
-                      icon: const Icon(Icons.volume_up, color: Colors.cyanAccent),
-                      onPressed: () => notifier.speakOriginal(),
+                   if (state.isInitializing)
+                    const LinearProgressIndicator(color: Colors.cyanAccent),
+                  if (state.error != null)
+                    _buildErrorDisplay(state.error!),
+                  
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _buildOriginalWindow(state, notifier),
+                        ),
+                        Container(width: 1, color: Colors.white.withOpacity(0.1)),
+                        Expanded(
+                          child: _buildTranslationWindow(state, notifier),
+                        ),
+                      ],
                     ),
                   ),
+
+                  // Compact Bottom Bar for Landscape
+                  _buildControlBar(context, state, notifier, isLandscape: true),
                 ],
-              ),
-            ),
-            
-            // Middle Control Bar
-            _buildControlBar(context, state, notifier),
-            
-            // Bottom Window: Translated Text
-            Expanded(
-              child: Stack(
-                children: [
-                  ScrollingTextWindow(
-                    text: state.historyOutputText.isEmpty 
-                          ? state.outputText 
-                          : (state.outputText.isEmpty ? state.historyOutputText : "${state.historyOutputText}\n\n${state.outputText}").trim(),
-                    title: "Translation",
-                    baseColor: Colors.greenAccent,
-                  ),
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: IconButton(
-                      icon: const Icon(Icons.volume_up, color: Colors.blueAccent),
-                      onPressed: () => notifier.speakTranslated(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+              );
+            }
+
+            // Portrait Layout
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (state.isInitializing)
+                  const LinearProgressIndicator(color: Colors.cyanAccent),
+                if (state.error != null)
+                  _buildErrorDisplay(state.error!),
+                
+                Expanded(child: _buildOriginalWindow(state, notifier)),
+                Expanded(child: _buildTranslationWindow(state, notifier)),
+                _buildControlBar(context, state, notifier, isLandscape: false),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildControlBar(BuildContext context, TranslationState state, TranslationNotifier notifier) {
+  Widget _buildErrorDisplay(String error) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Text(
+        error,
+        style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildOriginalWindow(TranslationState state, TranslationNotifier notifier) {
+    return Stack(
+      children: [
+        ScrollingTextWindow(
+          text: state.historyInputText.isEmpty 
+                ? state.inputText 
+                : (state.inputText.isEmpty ? state.historyInputText : "${state.historyInputText}\n\n${state.inputText}").trim(),
+          title: "Original",
+          baseColor: Colors.blueAccent,
+        ),
+        Positioned(
+          bottom: 8,
+          right: 8,
+          child: IconButton(
+            icon: const Icon(Icons.volume_up, color: Colors.cyanAccent),
+            onPressed: () => notifier.speakOriginal(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTranslationWindow(TranslationState state, TranslationNotifier notifier) {
+    return Stack(
+      children: [
+        ScrollingTextWindow(
+          text: state.historyOutputText.isEmpty 
+                ? state.outputText 
+                : (state.outputText.isEmpty ? state.historyOutputText : "${state.historyOutputText}\n\n${state.outputText}").trim(),
+          title: "Translation",
+          baseColor: Colors.greenAccent,
+        ),
+        Positioned(
+          bottom: 8,
+          right: 8,
+          child: IconButton(
+            icon: const Icon(Icons.volume_up, color: Colors.blueAccent),
+            onPressed: () => notifier.speakTranslated(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildControlBar(BuildContext context, TranslationState state, TranslationNotifier notifier, {required bool isLandscape}) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
+      padding: EdgeInsets.symmetric(
+        vertical: isLandscape ? 12 : 20, 
+        horizontal: isLandscape ? 16 : 16
+      ),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
         border: Border(
           top: BorderSide(color: Colors.white.withOpacity(0.1)),
-          bottom: BorderSide(color: Colors.white.withOpacity(0.1)),
         ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           // Left: Source Language (Selectable)
-          _buildLanguageButton(
-            context,
-            state.sourceLanguage,
-            () => _showLanguagePicker(context, notifier, true),
-            Icons.translate,
+          Expanded(
+            child: _buildLanguageButton(
+              context,
+              state.sourceLanguage,
+              () => _showLanguagePicker(context, notifier, true),
+              Icons.translate,
+            ),
           ),
           
+          const SizedBox(width: 12),
+
           // Center: Start / Stop
           GestureDetector(
             onTap: () => notifier.toggleRecording(),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              width: 72,
-              height: 72,
+              width: isLandscape ? 56 : 72,
+              height: isLandscape ? 56 : 72,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
@@ -199,25 +243,29 @@ class TranslateView extends ConsumerWidget {
                 boxShadow: [
                   BoxShadow(
                     color: (state.isRecording ? Colors.red : Colors.cyanAccent).withOpacity(0.4),
-                    blurRadius: 20,
-                    spreadRadius: 2,
+                    blurRadius: 15,
+                    spreadRadius: 1,
                   ),
                 ],
               ),
               child: Icon(
                 state.isRecording ? Icons.stop_rounded : Icons.mic_rounded,
                 color: Colors.white,
-                size: 32,
+                size: isLandscape ? 24 : 32,
               ),
             ),
           ),
-          
+
+          const SizedBox(width: 12),
+
           // Right: Target Language (Selectable)
-          _buildLanguageButton(
-            context,
-            state.targetLanguage,
-            () => _showLanguagePicker(context, notifier, false),
-            Icons.language,
+          Expanded(
+            child: _buildLanguageButton(
+              context,
+              state.targetLanguage,
+              () => _showLanguagePicker(context, notifier, false),
+              Icons.language,
+            ),
           ),
         ],
       ),
@@ -234,15 +282,20 @@ class TranslateView extends ConsumerWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white70, size: 18),
+            Text(_getFlag(label), style: const TextStyle(fontSize: 16)),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+            Expanded(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: GoogleFonts.inter(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
@@ -274,19 +327,21 @@ class TranslateView extends ConsumerWidget {
                 child: ListView.builder(
                   shrinkWrap: true,
                   itemCount: languages.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      title: Text(languages[index], style: const TextStyle(color: Colors.white)),
-                      onTap: () {
-                        if (isSource) {
-                          notifier.setSourceLanguage(languages[index]);
-                        } else {
-                          notifier.setTargetLanguage(languages[index]);
-                        }
-                        Navigator.pop(context);
-                      },
-                    );
-                  },
+                    itemBuilder: (context, index) {
+                      final lang = languages[index];
+                      return ListTile(
+                        leading: Text(_getFlag(lang), style: const TextStyle(fontSize: 20)),
+                        title: Text(lang, style: const TextStyle(color: Colors.white)),
+                        onTap: () {
+                          if (isSource) {
+                            notifier.setSourceLanguage(lang);
+                          } else {
+                            notifier.setTargetLanguage(lang);
+                          }
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
                 ),
               ),
             ],
@@ -294,5 +349,19 @@ class TranslateView extends ConsumerWidget {
         );
       },
     );
+  }
+
+  String _getFlag(String language) {
+    switch (language) {
+      case "Swedish": return "🇸🇪";
+      case "Chinese": return "🇨🇳";
+      case "Spanish": return "🇪🇸";
+      case "Japanese": return "🇯🇵";
+      case "Korean": return "🇰🇷";
+      case "Finnish": return "🇫🇮";
+      case "English": return "🇺🇸";
+      case "Auto": return "🌐";
+      default: return "🏳️";
+    }
   }
 }

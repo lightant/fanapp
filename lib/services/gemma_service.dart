@@ -138,7 +138,14 @@ class GemmaService {
       
       final pSource = sourceLang ?? "any";
       final pTarget = targetLang ?? "English";
-      final prompt = "Transcribe and translate this $pSource audio to $pTarget. Output format: [ORIGINAL]: {transcription} [TRANSLATED]: {translation}";
+      
+      // Refined prompt for better instruction following
+      final prompt = "You are a specialized translator. "
+          "Task: Transcribe the audio and then translate it into $pTarget. "
+          "Constraint: You MUST output the translation in $pTarget. "
+          "Output Format: [ORIGINAL]: {transcription} [TRANSLATED]: {translation}";
+
+      print("[GemmaService] Prompt: $prompt");
 
       await session.addQueryChunk(Message.withAudio(
         audioBytes: audioBytes, 
