@@ -38,8 +38,8 @@ Integrated voice synthesis allows you to listen to both the original and transla
 To use the app, you need the **Gemma 4 E2B** model file in the `.litertlm` (LiteRT) format.
 
 ### 1. Download the Model
-- **Kaggle Models**: [google/gemma-4/litert/e2b](https://www.kaggle.com/models/google/google-gemma-4-e2b-litertlm)
-- **Hugging Face**: [google/gemma-4-e2b-it-litertlm](https://huggingface.co/google/gemma-4-e2b-it-litertlm)
+
+- **Hugging Face**: [google/gemma-4-e2b-it-litertlm](https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm)
 
 ### 2. Transfer to Device
 
