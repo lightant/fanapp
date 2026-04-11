@@ -68,8 +68,13 @@ class TranslationNotifier extends Notifier<TranslationState> {
   final _gemmaService = GemmaService();
   StreamSubscription? _amplitudeSub;
   Timer? _silenceTimer;
+  Timer? _absoluteSilenceTimer;
+  Timer? _maxChunkTimer;
   static const double _silenceThreshold = -40.0;
-  static const int _silenceDurationMs = 2000;
+  static const int _silenceDurationMs = 1500;
+  
+  final List<String> _audioQueue = [];
+  bool _isTranslating = false;
 
   @override
   TranslationState build() {
@@ -129,13 +134,17 @@ class TranslationNotifier extends Notifier<TranslationState> {
       }
       _stopSilenceDetection();
       final path = await _audioService.stopRecording();
-      final sourceLang = state.sourceLanguage == "Auto" ? null : state.sourceLanguage;
-      final targetLang = state.targetLanguage;
 
       if (path != null) {
-        print("[TranslationNotifier] Audio saved to: $path");
-        state = state.copyWith(isRecording: false, lastAudioPath: path);
-        _startTranslation(path, sourceLang, targetLang);
+        if (_hasSpoken) {
+          print("[TranslationNotifier] Audio saved to: $path");
+          state = state.copyWith(isRecording: false, lastAudioPath: path);
+          _audioQueue.add(path);
+          _processQueue();
+        } else {
+          print("[TranslationNotifier] Chunk was purely silent, ignoring audio.");
+          state = state.copyWith(isRecording: false);
+        }
       } else {
         state = state.copyWith(isRecording: false);
       }
@@ -161,40 +170,120 @@ class TranslationNotifier extends Notifier<TranslationState> {
   void _startSilenceDetection() {
     _amplitudeSub?.cancel();
     _silenceTimer?.cancel();
+    _absoluteSilenceTimer?.cancel();
+    _maxChunkTimer?.cancel();
     _hasSpoken = false;
     
+    if (state.isLiveMode) {
+      _startAbsoluteSilenceTimer();
+    }
+
     _amplitudeSub = _audioService.amplitudeStream().listen((amp) {
       if (amp.current > _silenceThreshold) {
-        // Sound detected, mark that speech started and reset timer
-        _hasSpoken = true;
+        if (!_hasSpoken) {
+          _hasSpoken = true;
+          if (state.isLiveMode) {
+            _maxChunkTimer = Timer(const Duration(seconds: 10), () {
+              print("[TranslationNotifier] 10s max chunk length reached, cutting chunk...");
+              _handleLiveSilence();
+            });
+          }
+        }
         _silenceTimer?.cancel();
+        _absoluteSilenceTimer?.cancel();
       } else {
-        // Silence detected (volume below threshold)
+        if (state.isLiveMode) {
+          _startAbsoluteSilenceTimer();
+        }
+
         if (_hasSpoken) {
-          // If they have spoken previously, start the countdown to stop
           if (_silenceTimer == null || !_silenceTimer!.isActive) {
             _silenceTimer = Timer(const Duration(milliseconds: _silenceDurationMs), () {
-              print("[TranslationNotifier] Post-speech silence detected, translating...");
-              toggleRecording(isAutoStop: true);
+              print("[TranslationNotifier] Post-speech silence detected...");
+              if (state.isLiveMode) {
+                _handleLiveSilence();
+              } else {
+                toggleRecording(isAutoStop: true);
+              }
             });
           }
         }
       }
     });
+  }
 
-    // We removed the strictly automatic 2-second initial limit. 
-    // Now it will wait infinitely for speech to start.
+  void _startAbsoluteSilenceTimer() {
+    if (_absoluteSilenceTimer == null || !_absoluteSilenceTimer!.isActive) {
+      _absoluteSilenceTimer = Timer(const Duration(seconds: 10), () {
+        print("[TranslationNotifier] 10s absolute silence! Stopping Live Mode.");
+        toggleRecording();
+      });
+    }
   }
 
   void _stopSilenceDetection() {
     _amplitudeSub?.cancel();
     _silenceTimer?.cancel();
+    _absoluteSilenceTimer?.cancel();
+    _maxChunkTimer?.cancel();
     _amplitudeSub = null;
     _silenceTimer = null;
+    _absoluteSilenceTimer = null;
+    _maxChunkTimer = null;
   }
 
-  Future<void> _startTranslation(String audioPath, String? sourceLang, String targetLang) async {
+  Future<void> _handleLiveSilence() async {
+    print("[TranslationNotifier] Live chunk boundary reached...");
+    _stopSilenceDetection();
+    final path = await _audioService.stopRecording();
+    if (path != null) {
+      if (_hasSpoken) {
+        state = state.copyWith(lastAudioPath: path);
+        _audioQueue.add(path);
+        _processQueue();
+      } else {
+        print("[TranslationNotifier] Chunk was purely silent, ignoring audio.");
+      }
+    }
+
+    if (!state.isLiveMode) {
+      state = state.copyWith(isRecording: false);
+      return;
+    }
+
+    print("[TranslationNotifier] Restarting recording for next chunk...");
+    final newPath = await _audioService.startRecording();
+    if (newPath != null) {
+      if (!_isTranslating) {
+        state = state.copyWith(outputText: "Listening...", inputText: "");
+      }
+      _startSilenceDetection();
+    } else {
+      state = state.copyWith(isRecording: false);
+    }
+  }
+
+  void _processQueue() async {
+    if (_isTranslating || _audioQueue.isEmpty) return;
+    _isTranslating = true;
+    final path = _audioQueue.removeAt(0);
+
+    final sourceLang = state.sourceLanguage == "Auto" ? null : state.sourceLanguage;
+    final targetLang = state.targetLanguage;
+
+    await _executeTranslation(path, sourceLang, targetLang);
+    _isTranslating = false;
+    
+    if (_audioQueue.isNotEmpty) {
+      _processQueue();
+    } else if (state.isRecording) {
+      state = state.copyWith(outputText: "Listening...", inputText: "");
+    }
+  }
+
+  Future<void> _executeTranslation(String audioPath, String? sourceLang, String targetLang) async {
     state = state.copyWith(outputText: "", inputText: "");
+    
     final stream = _gemmaService.translateAudioStream(audioPath, sourceLang: sourceLang, targetLang: targetLang);
     
     String accumulated = "";
@@ -213,10 +302,10 @@ class TranslationNotifier extends Notifier<TranslationState> {
     if (state.inputText.isNotEmpty || state.outputText.isNotEmpty) {
       final newHistoryInput = state.historyInputText.isEmpty 
           ? state.inputText 
-          : "${state.historyInputText}\n\n${state.inputText}";
+          : "${state.historyInputText}\\n\\n${state.inputText}";
       final newHistoryOutput = state.historyOutputText.isEmpty 
           ? state.outputText 
-          : "${state.historyOutputText}\n\n${state.outputText}";
+          : "${state.historyOutputText}\\n\\n${state.outputText}";
 
       state = state.copyWith(
         historyInputText: newHistoryInput.trim(),
@@ -225,17 +314,28 @@ class TranslationNotifier extends Notifier<TranslationState> {
         outputText: "",
       );
     }
-
-    if (state.isLiveMode && !state.isInitializing) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (state.isLiveMode && !state.isRecording) {
-          toggleRecording();
-        }
-      });
-    }
   }
 
   void _parseAccumulated(String text) {
+    final hallucinationTriggers = [
+       "You are a specialized",
+       "session_basic",
+       "<|turn>",
+       "<turn|>",
+       "{transcription}",
+       "{translation}"
+    ];
+    for (var t in hallucinationTriggers) {
+      if (text.contains(t)) {
+        state = state.copyWith(inputText: "", outputText: "");
+        return;
+      }
+    }
+    if (text.trim() == "I") {
+      state = state.copyWith(inputText: "", outputText: "");
+      return;
+    }
+
     String original = "";
     String translated = "";
 
