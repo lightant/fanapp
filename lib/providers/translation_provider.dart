@@ -183,8 +183,8 @@ class TranslationNotifier extends Notifier<TranslationState> {
         if (!_hasSpoken) {
           _hasSpoken = true;
           if (state.isLiveMode) {
-            _maxChunkTimer = Timer(const Duration(seconds: 10), () {
-              print("[TranslationNotifier] 10s max chunk length reached, cutting chunk...");
+            _maxChunkTimer = Timer(const Duration(seconds: 5), () {
+              print("[TranslationNotifier] 5s max chunk length reached, cutting chunk...");
               _handleLiveSilence();
             });
           }
@@ -302,10 +302,10 @@ class TranslationNotifier extends Notifier<TranslationState> {
     if (state.inputText.isNotEmpty || state.outputText.isNotEmpty) {
       final newHistoryInput = state.historyInputText.isEmpty 
           ? state.inputText 
-          : "${state.historyInputText}\\n\\n${state.inputText}";
+          : "${state.historyInputText}\n\n${state.inputText}";
       final newHistoryOutput = state.historyOutputText.isEmpty 
           ? state.outputText 
-          : "${state.historyOutputText}\\n\\n${state.outputText}";
+          : "${state.historyOutputText}\n\n${state.outputText}";
 
       state = state.copyWith(
         historyInputText: newHistoryInput.trim(),
@@ -339,21 +339,26 @@ class TranslationNotifier extends Notifier<TranslationState> {
     String original = "";
     String translated = "";
 
-    // Using case-insensitive regex for tags, allowing for optional colons and spaces
-    final originalMatch = RegExp(r"\[ORIGINAL\]\s*:?\s*([\s\S]*?)(?=\[TRANSLATED\]|$)", caseSensitive: false).firstMatch(text);
-    final translatedMatch = RegExp(r"\[TRANSLATED\]\s*:?\s*([\s\S]*)", caseSensitive: false).firstMatch(text);
+    final origRegex = RegExp(r"(?:\[ORIGINAL\]|Original(?: Transcription)?)\s*:?\s*", caseSensitive: false);
+    final transRegex = RegExp(r"(?:\[TRANSLATED\]|Translated(?: into [a-zA-Z]+)?)\s*:?\s*", caseSensitive: false);
+    
+    final origMatch = origRegex.firstMatch(text);
+    final transMatch = transRegex.firstMatch(text);
 
-    if (originalMatch != null) {
-      original = originalMatch.group(1) ?? "";
-    }
-    if (translatedMatch != null) {
-      translated = translatedMatch.group(1) ?? "";
-    }
-
-    // Fallback if tags are missing entirely
-    if (originalMatch == null && translatedMatch == null) {
-      // Strip any full tags that might be misformatted
-      translated = text.replaceAll(RegExp(r'\[?(ORIGINAL|TRANSLATED)\]?\s*:?\s*', caseSensitive: false), '');
+    if (origMatch != null && transMatch != null) {
+      if (origMatch.start < transMatch.start) {
+        original = text.substring(origMatch.end, transMatch.start);
+        translated = text.substring(transMatch.end);
+      } else {
+        translated = text.substring(transMatch.end, origMatch.start);
+        original = text.substring(origMatch.end);
+      }
+    } else if (origMatch != null) {
+      original = text.substring(origMatch.end);
+    } else if (transMatch != null) {
+      translated = text.substring(transMatch.end);
+    } else {
+      translated = text.replaceFirst(RegExp(r"^[\s\S]*?(?:here is the|translation is:|transcription is:)\s*", caseSensitive: false), "");
     }
 
     // Clean up any partial tags that are actively streaming at the end of the text like "[ORIG" or "[TRANS"

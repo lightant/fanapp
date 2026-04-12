@@ -140,10 +140,11 @@ class GemmaService {
       final pTarget = targetLang ?? "English";
       
       // Refined prompt for better instruction following
-      final prompt = "You are a specialized translator. "
-          "Task: Transcribe the audio and then translate it into $pTarget. "
-          "Constraint: You MUST output the translation in $pTarget. "
-          "Output Format: [ORIGINAL]: {transcription} [TRANSLATED]: {translation}";
+      final prompt = "You are an expert translator. "
+          "Task: 1. Transcribe the audio in its original language. 2. Translate it into $pTarget.\n"
+          "CRITICAL: The [TRANSLATED] section MUST BE EXCLUSIVELY IN $pTarget. Do not repeat the original language in the translation.\n"
+          "Output Format:\n[ORIGINAL]: {transcription}\n[TRANSLATED]: {strict translation in $pTarget}\n"
+          "Do NOT add any conversational text or explanations.";
 
       print("[GemmaService] Prompt: $prompt");
 
