@@ -323,7 +323,12 @@ class TranslationNotifier extends Notifier<TranslationState> {
        "<|turn>",
        "<turn|>",
        "{transcription}",
-       "{translation}"
+       "{translation}",
+       "[SILENCE]",
+       "I'm a translator",
+       "I am a translator",
+       "m a translator",
+       "can translate audio"
     ];
     for (var t in hallucinationTriggers) {
       if (text.contains(t)) {
@@ -339,8 +344,8 @@ class TranslationNotifier extends Notifier<TranslationState> {
     String original = "";
     String translated = "";
 
-    final origRegex = RegExp(r"(?:\[ORIGINAL\]|Original(?: Transcription)?)\s*:?\s*", caseSensitive: false);
-    final transRegex = RegExp(r"(?:\[TRANSLATED\]|Translated(?: into [a-zA-Z]+)?)\s*:?\s*", caseSensitive: false);
+    final origRegex = RegExp(r"(?:\[\s*(?:ORIGINAL|TRANSCRIPTION|SOURCE)[^\]]{0,15}\]|\b(?:Original|Transcription|Source)\b[^:]{0,10}:\s*)", caseSensitive: false);
+    final transRegex = RegExp(r"(?:\[\s*(?:TRANSLATED|TRANSLATION|TARGET|ENGLISH|OUTPUT)[^\]]{0,15}\]|\b(?:Translated|Translation|Target|English|Output)\b[^:]{0,10}:\s*)", caseSensitive: false);
     
     final origMatch = origRegex.firstMatch(text);
     final transMatch = transRegex.firstMatch(text);

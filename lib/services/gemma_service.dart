@@ -10,7 +10,10 @@ class GemmaService {
   InferenceModel? _model;
   String? _currentModelPath;
 
-  Future<String> initModel({String? specificPath, bool supportAudio = false}) async {
+  Future<String> initModel({
+    String? specificPath,
+    bool supportAudio = false,
+  }) async {
     try {
       if (!_isInitialized) {
         await FlutterGemma.initialize();
@@ -31,7 +34,9 @@ class GemmaService {
           fileType: ModelFileType.litertlm,
         ).fromFile(targetPath).install();
 
-        print("[GemmaService] Activating model (supportAudio: $supportAudio)...");
+        print(
+          "[GemmaService] Activating model (supportAudio: $supportAudio)...",
+        );
         _model = await FlutterGemma.getActiveModel(
           preferredBackend: PreferredBackend.gpu,
           maxTokens: 4096,
@@ -48,10 +53,10 @@ class GemmaService {
 
   Future<bool> _requestStoragePermission() async {
     if (defaultTargetPlatform != TargetPlatform.android) return true;
-    
+
     // For Android 11+, we ideally want MANAGE_EXTERNAL_STORAGE for side-loading
     if (await Permission.manageExternalStorage.isGranted) return true;
-    
+
     final status = await Permission.manageExternalStorage.request();
     if (status.isGranted) return true;
 
@@ -63,7 +68,9 @@ class GemmaService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       final hasPermission = await _requestStoragePermission();
       if (!hasPermission) {
-        print("[GemmaService] Storage permission denied. Cannot auto-discover models.");
+        print(
+          "[GemmaService] Storage permission denied. Cannot auto-discover models.",
+        );
       }
     }
 
@@ -114,7 +121,11 @@ class GemmaService {
   }
 
   /// Translates audio to target language
-  Stream<String> translateAudioStream(String audioFilePath, {String? sourceLang, String? targetLang}) async* {
+  Stream<String> translateAudioStream(
+    String audioFilePath, {
+    String? sourceLang,
+    String? targetLang,
+  }) async* {
     if (_model == null) {
       final status = await initModel();
       if (status.startsWith("INIT_FAILED")) {
@@ -131,28 +142,35 @@ class GemmaService {
 
     try {
       // Use the multimodal audio message support in flutter_gemma 0.13.x
-      final session = await _model!.createSession();
+      final pSource = sourceLang ?? "any";
+      final pTarget = targetLang ?? "English";
+
+      String sourceInstruction = pSource == "any"
+          ? "its original language"
+          : "the $pSource language";
+
+      final systemPrompt =
+          "You are an expert translator. "
+          "Task: 1. Translate the audio into $pTarget. 2. Provide the transcription strictly in $sourceInstruction.\n"
+          "CRITICAL: You MUST translate the audio into $pTarget. Do not repeat the original language.\n"
+          "If the audio is purely silent or unintelligible noise, output EXACTLY: [SILENCE]\n"
+          "Output Format:\n[TRANSLATED]: {translation in $pTarget}\n[ORIGINAL]: {transcription in $sourceInstruction}\n"
+          "Do NOT add any conversational text or explanations. Do not imagine speech if there is none.";
+
+      // The official example initializes the conversation with systemInstruction
+      final session = await _model!.createSession(
+        systemInstruction: systemPrompt,
+      );
+
       print("[GemmaService] Reading audio file: $audioFilePath");
       final audioBytes = await audioFile.readAsBytes();
       print("[GemmaService] Audio bytes size: ${audioBytes.length}");
-      
-      final pSource = sourceLang ?? "any";
-      final pTarget = targetLang ?? "English";
-      
-      // Refined prompt for better instruction following
-      final prompt = "You are an expert translator. "
-          "Task: 1. Transcribe the audio in its original language. 2. Translate it into $pTarget.\n"
-          "CRITICAL: The [TRANSLATED] section MUST BE EXCLUSIVELY IN $pTarget. Do not repeat the original language in the translation.\n"
-          "Output Format:\n[ORIGINAL]: {transcription}\n[TRANSLATED]: {strict translation in $pTarget}\n"
-          "Do NOT add any conversational text or explanations.";
+      print("[GemmaService] System Prompt: $systemPrompt");
 
-      print("[GemmaService] Prompt: $prompt");
-
-      await session.addQueryChunk(Message.withAudio(
-        audioBytes: audioBytes, 
-        text: prompt,
-        isUser: true
-      ));
+      // Add audio with empty text, so text is not appended incorrectly
+      await session.addQueryChunk(
+        Message.withAudio(audioBytes: audioBytes, text: "", isUser: true),
+      );
 
       print("[GemmaService] Starting inference...");
       await for (final chunk in session.getResponseAsync()) {
