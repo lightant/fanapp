@@ -319,6 +319,10 @@ class TranslationNotifier extends Notifier<TranslationState> {
   void _parseAccumulated(String text) {
     final hallucinationTriggers = [
        "You are a specialized",
+       "You are a professional",
+       "real-time speech translator",
+       "Task Instructions",
+       "Strict Constraints",
        "session_basic",
        "<|turn>",
        "<turn|>",

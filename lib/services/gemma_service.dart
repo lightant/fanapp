@@ -141,21 +141,44 @@ class GemmaService {
     }
 
     try {
-      // Use the multimodal audio message support in flutter_gemma 0.13.x
       final pSource = sourceLang ?? "any";
       final pTarget = targetLang ?? "English";
 
-      String sourceInstruction = pSource == "any"
-          ? "its original language"
-          : "the $pSource language";
-
-      final systemPrompt =
-          "You are an expert translator. "
-          "Task: 1. Translate the audio into $pTarget. 2. Provide the transcription strictly in $sourceInstruction.\n"
-          "CRITICAL: You MUST translate the audio into $pTarget. Do not repeat the original language.\n"
-          "If the audio is purely silent or unintelligible noise, output EXACTLY: [SILENCE]\n"
-          "Output Format:\n[TRANSLATED]: {translation in $pTarget}\n[ORIGINAL]: {transcription in $sourceInstruction}\n"
-          "Do NOT add any conversational text or explanations. Do not imagine speech if there is none.";
+      final String systemPrompt;
+      if (pSource == "any") {
+        systemPrompt =
+            "You are a professional real-time speech translator.\n"
+            "Source Language: Any (auto-detect)\n"
+            "Target Language: $pTarget\n\n"
+            "Task Instructions:\n"
+            "1. Transcribe the audio exactly in the language it is spoken. Output this transcription under the [ORIGINAL] tag.\n"
+            "2. Translate that transcription strictly into $pTarget. Output this translation under the [TRANSLATED] tag.\n\n"
+            "Strict Constraints:\n"
+            "- Under [TRANSLATED], you MUST translate only into $pTarget. Do NOT output the original language.\n"
+            "- Under [ORIGINAL], output the transcription in the original language. Do NOT output the translation.\n"
+            "- If the audio is purely silent, contains only unintelligible noise/static, or has no speech, output EXACTLY: [SILENCE]\n"
+            "- Do NOT add any conversational text, pleasantries, explanations, or system tags.\n\n"
+            "Output Format:\n"
+            "[TRANSLATED]: {translation in $pTarget}\n"
+            "[ORIGINAL]: {transcription in original language}";
+      } else {
+        systemPrompt =
+            "You are a professional real-time speech translator.\n"
+            "Source Language: $pSource\n"
+            "Target Language: $pTarget\n\n"
+            "Task Instructions:\n"
+            "1. Transcribe the audio exactly in $pSource. Output this transcription under the [ORIGINAL] tag.\n"
+            "2. Translate that transcription strictly into $pTarget. Output this translation under the [TRANSLATED] tag.\n\n"
+            "Strict Constraints:\n"
+            "- You MUST translate strictly from $pSource to $pTarget. Do NOT translate from any other language.\n"
+            "- If the speech in the audio is NOT in the $pSource language, or is silent/noise/static, output EXACTLY: [SILENCE]\n"
+            "- Under [TRANSLATED], you MUST translate only into $pTarget. Do NOT output $pSource.\n"
+            "- Under [ORIGINAL], output the transcription in $pSource. Do NOT output the translation.\n"
+            "- Do NOT add any conversational text, pleasantries, explanations, or system tags.\n\n"
+            "Output Format:\n"
+            "[TRANSLATED]: {translation in $pTarget}\n"
+            "[ORIGINAL]: {transcription in $pSource}";
+      }
 
       // The official example initializes the conversation with systemInstruction
       final session = await _model!.createSession(
